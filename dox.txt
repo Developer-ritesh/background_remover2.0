@@ -1,0 +1,64 @@
+# Use Ubuntu 22.04 base image
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install system dependencies, Node.js 22.18.0, and OpenCV runtime libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    bash \
+    git \
+    python3 python3-pip python3-venv python3-dev \
+    build-essential \
+    cmake \
+    pkg-config \
+    libgl1 \
+    libglib2.0-0 \
+    wget \
+ && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && npm install -g nodemon \
+ && rm -rf /var/lib/apt/lists/*
+
+# Set work directory
+WORKDIR /usr/src/app
+
+# Copy Node.js dependencies and install
+COPY package*.json ./
+RUN npm install
+
+# Copy the rest of the project
+COPY . .
+
+# Create Python virtual environment and install Python packages
+RUN python3 -m venv /opt/venv \
+ && curl -sS https://bootstrap.pypa.io/get-pip.py | /opt/venv/bin/python \
+ && /opt/venv/bin/pip install --no-cache-dir --upgrade setuptools wheel \
+ && /opt/venv/bin/pip install --prefer-binary \
+    torch==1.13.1 torchvision==0.14.1 \
+    --index-url https://download.pytorch.org/whl/cpu \
+ && /opt/venv/bin/pip install --prefer-binary rembg pillow realesrgan
+
+
+# Download RealESRGAN_x4.pth
+RUN mkdir -p /root/.realesrgan \
+ && wget -O /root/.realesrgan/RealESRGAN_x4.pth \
+    https://github.com/xinntao/Real-ESRGAN/releases/download/v0.3.0/RealESRGAN_x4.pth
+
+
+
+# Add venv to PATH
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Download u2net.onnx model for rembg
+RUN mkdir -p /root/.u2net \
+ && wget -O /root/.u2net/u2net.onnx \
+    https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx
+
+# Expose app port
+EXPOSE 3000
+
+# Run with nodemon
+CMD ["nodemon", "app.js"]
